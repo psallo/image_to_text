@@ -105,6 +105,20 @@ const getTauriInvoke = () => window.__TAURI__?.core?.invoke;
 
 const readFileBytes = async (file) => Array.from(new Uint8Array(await file.arrayBuffer()));
 
+const getErrorMessage = (error) => {
+  if (!error) return "추출 실패";
+  if (typeof error === "string") return error;
+  if (error.message) return error.message;
+  if (typeof error === "object") {
+    try {
+      return JSON.stringify(error);
+    } catch (_) {
+      return "추출 실패";
+    }
+  }
+  return String(error);
+};
+
 const invokeNativeOcr = async (file) => {
   const invoke = getTauriInvoke();
   if (!invoke) {
@@ -141,7 +155,7 @@ const extractText = async (file) => {
     console.error(error);
     resultText.value = "";
     copyButton.disabled = true;
-    setStatus(error.message || "추출 실패", 0);
+    setStatus(getErrorMessage(error), 0);
   }
 };
 

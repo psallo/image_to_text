@@ -62,6 +62,10 @@ fn resolve_sidecar_path(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .resolve(format!("binaries/{sidecar_filename}"), BaseDirectory::Resource)
         .ok();
+    let resource_root_candidate = app
+        .path()
+        .resolve(&sidecar_filename, BaseDirectory::Resource)
+        .ok();
 
     let cwd_candidate = std::env::current_dir()
         .ok()
@@ -80,6 +84,9 @@ fn resolve_sidecar_path(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(path) = resource_candidate {
         candidates.push(path);
     }
+    if let Some(path) = resource_root_candidate {
+        candidates.push(path);
+    }
     if let Some(path) = cwd_candidate {
         candidates.push(path);
     }
@@ -88,9 +95,17 @@ fn resolve_sidecar_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
 
     candidates
-        .into_iter()
+        .iter()
         .find(|path| path.exists())
-        .ok_or_else(|| format!("Native OCR sidecar not found: {sidecar_filename}"))
+        .cloned()
+        .ok_or_else(|| {
+            let tried = candidates
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("Native OCR sidecar not found: {sidecar_filename}. Tried: {tried}")
+        })
 }
 
 fn write_temp_image(image_bytes: &[u8], filename: Option<&str>) -> Result<PathBuf, String> {
