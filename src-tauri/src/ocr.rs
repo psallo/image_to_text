@@ -7,12 +7,6 @@ use std::{
 
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
-#[cfg(target_os = "windows")]
-const SIDECAR_FILENAME: &str = concat!("native-ocr-", env!("TARGET"), ".exe");
-
-#[cfg(not(target_os = "windows"))]
-const SIDECAR_FILENAME: &str = concat!("native-ocr-", env!("TARGET"));
-
 #[derive(Clone, serde::Deserialize)]
 pub struct NativeOcrRequest {
     pub image_bytes: Vec<u8>,
@@ -63,20 +57,21 @@ fn run_native_ocr_sync(app: AppHandle, payload: NativeOcrRequest) -> Result<Stri
 }
 
 fn resolve_sidecar_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let sidecar_filename = sidecar_filename();
     let resource_candidate = app
         .path()
-        .resolve(format!("binaries/{SIDECAR_FILENAME}"), BaseDirectory::Resource)
+        .resolve(format!("binaries/{sidecar_filename}"), BaseDirectory::Resource)
         .ok();
 
     let cwd_candidate = std::env::current_dir()
         .ok()
-        .map(|dir| dir.join("src-tauri").join("binaries").join(SIDECAR_FILENAME));
+        .map(|dir| dir.join("src-tauri").join("binaries").join(&sidecar_filename));
 
     let exe_candidates = std::env::current_exe().ok().map(|exe| {
         let mut candidates = Vec::new();
         if let Some(parent) = exe.parent() {
-            candidates.push(parent.join(SIDECAR_FILENAME));
-            candidates.push(parent.join("../Resources").join(SIDECAR_FILENAME));
+            candidates.push(parent.join(&sidecar_filename));
+            candidates.push(parent.join("../Resources").join(&sidecar_filename));
         }
         candidates
     });
@@ -95,12 +90,12 @@ fn resolve_sidecar_path(app: &AppHandle) -> Result<PathBuf, String> {
     candidates
         .into_iter()
         .find(|path| path.exists())
-        .ok_or_else(|| format!("Native OCR sidecar not found: {SIDECAR_FILENAME}"))
+        .ok_or_else(|| format!("Native OCR sidecar not found: {sidecar_filename}"))
 }
 
 fn write_temp_image(image_bytes: &[u8], filename: Option<&str>) -> Result<PathBuf, String> {
     let extension = filename
-        .and_then(Path::new().extension())
+        .and_then(|value| Path::new(value).extension())
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .unwrap_or("png");
@@ -113,4 +108,32 @@ fn write_temp_image(image_bytes: &[u8], filename: Option<&str>) -> Result<PathBu
     let path = std::env::temp_dir().join(format!("simple-ocr-{timestamp}.{extension}"));
     fs::write(&path, image_bytes).map_err(|error| format!("Failed to write temp image: {error}"))?;
     Ok(path)
+}
+
+fn sidecar_filename() -> String {
+    let mut name = format!("native-ocr-{}", current_target_triple());
+    if cfg!(target_os = "windows") {
+        name.push_str(".exe");
+    }
+    name
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn current_target_triple() -> &'static str {
+    "aarch64-apple-darwin"
+}
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+fn current_target_triple() -> &'static str {
+    "x86_64-apple-darwin"
+}
+
+#[cfg(all(target_os = "windows", target_arch = "x86_64"))]
+fn current_target_triple() -> &'static str {
+    "x86_64-pc-windows-msvc"
+}
+
+#[cfg(all(target_os = "windows", target_arch = "aarch64"))]
+fn current_target_triple() -> &'static str {
+    "aarch64-pc-windows-msvc"
 }
