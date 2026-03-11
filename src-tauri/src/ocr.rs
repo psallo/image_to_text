@@ -8,6 +8,7 @@ use std::{
 use tauri::{path::BaseDirectory, AppHandle, Manager};
 
 #[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NativeOcrRequest {
     pub image_bytes: Vec<u8>,
     pub filename: Option<String>,
