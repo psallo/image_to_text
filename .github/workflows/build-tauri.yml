@@ -24,12 +24,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: lts/*
           cache: npm
 
       - name: Install Rust
@@ -45,11 +45,10 @@ jobs:
         run: npm install
 
       - name: Build Tauri bundles
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tauriScript: npm run tauri --
           tagName: ${{ github.ref_name }}
           releaseName: Simple OCR ${{ github.ref_name }}
           releaseBody: |
