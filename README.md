@@ -43,6 +43,8 @@ npm install
 npm run dev
 ```
 
+이 명령은 웹 파일을 `dist/`로 복사한 뒤 Tauri 앱을 실행합니다.
+
 ### 4. Build bundles
 
 ```bash

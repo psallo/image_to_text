@@ -4,8 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "prepare:web": "node scripts/prepare-web.mjs",
+    "dev": "npm run prepare:web && tauri dev",
+    "build": "npm run prepare:web && tauri build",
     "tauri": "tauri"
   },
   "devDependencies": {
