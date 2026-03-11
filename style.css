@@ -151,6 +151,21 @@ h1 {
   padding: 18px 20px;
 }
 
+.mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--muted);
+  user-select: none;
+}
+
+.mode-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+}
+
 .status-row,
 .panel-header {
   display: flex;

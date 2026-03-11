@@ -6,6 +6,7 @@ const resultText = document.querySelector("#resultText");
 const statusText = document.querySelector("#statusText");
 const progressBar = document.querySelector("#progressBar");
 const copyButton = document.querySelector("#copyButton");
+const accuracyMode = document.querySelector("#accuracyMode");
 
 let activeObjectUrl = null;
 let workerPromise = null;
@@ -18,6 +19,9 @@ const OCR_SLICE_HEIGHT = 2200;
 const OCR_SLICE_OVERLAP = 180;
 const MIN_OCR_WIDTH = 1400;
 const COLUMN_GAP_TRIGGER = 245;
+const ACCURACY_MIN_OCR_WIDTH = 2200;
+const ACCURACY_SLICE_HEIGHT = 1600;
+const ACCURACY_SLICE_OVERLAP = 260;
 
 const setStatus = (message, progress = 0) => {
   statusText.textContent = message;
@@ -71,12 +75,17 @@ const loadBitmap = async (file) => {
   }
 };
 
-const computeScale = (sourceWidth, sourceHeight) => {
+const isAccuracyMode = () => Boolean(accuracyMode?.checked);
+
+const computeScale = (sourceWidth, sourceHeight, options = {}) => {
+  const maxImageWidth = options.maxImageWidth ?? MAX_IMAGE_WIDTH;
+  const maxImageHeight = options.maxImageHeight ?? MAX_IMAGE_HEIGHT;
+  const maxImagePixels = options.maxImagePixels ?? MAX_IMAGE_PIXELS;
   let scale = Math.min(
     1,
-    MAX_IMAGE_WIDTH / sourceWidth,
-    MAX_IMAGE_HEIGHT / sourceHeight,
-    Math.sqrt(MAX_IMAGE_PIXELS / (sourceWidth * sourceHeight)),
+    maxImageWidth / sourceWidth,
+    maxImageHeight / sourceHeight,
+    Math.sqrt(maxImagePixels / (sourceWidth * sourceHeight)),
   );
 
   if (!Number.isFinite(scale) || scale <= 0) {
@@ -148,8 +157,12 @@ const detectColumnSplit = (context, width, height) => {
   };
 };
 
-const drawNormalizedCanvas = (bitmap, scale) => {
-  const upscale = Math.max(1, MIN_OCR_WIDTH / Math.max(1, bitmap.width * scale));
+const drawNormalizedCanvas = (bitmap, scale, options = {}) => {
+  const targetMinWidth = options.targetMinWidth ?? MIN_OCR_WIDTH;
+  const thresholdHigh = options.thresholdHigh ?? 210;
+  const thresholdLow = options.thresholdLow ?? 145;
+  const grayScaleFactor = options.grayScaleFactor ?? 0.96;
+  const upscale = Math.max(1, targetMinWidth / Math.max(1, bitmap.width * scale));
   const finalScale = scale * upscale;
   const targetWidth = Math.max(1, Math.round(bitmap.width * finalScale));
   const targetHeight = Math.max(1, Math.round(bitmap.height * finalScale));
@@ -167,7 +180,12 @@ const drawNormalizedCanvas = (bitmap, scale) => {
 
   for (let index = 0; index < data.length; index += 4) {
     const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
-    const boosted = gray > 210 ? 255 : gray < 145 ? 0 : Math.min(255, Math.max(0, gray * 0.96));
+    const boosted =
+      gray > thresholdHigh
+        ? 255
+        : gray < thresholdLow
+          ? 0
+          : Math.min(255, Math.max(0, gray * grayScaleFactor));
     data[index] = boosted;
     data[index + 1] = boosted;
     data[index + 2] = boosted;
@@ -197,10 +215,20 @@ const canvasToFile = async (canvas, name) => {
 
 const normalizeImage = async (file) => {
   const bitmap = await loadBitmap(file);
-  const scale = computeScale(bitmap.width, bitmap.height);
+  const accuracy = isAccuracyMode();
+  const scale = computeScale(bitmap.width, bitmap.height, {
+    maxImageWidth: accuracy ? 2800 : MAX_IMAGE_WIDTH,
+    maxImageHeight: accuracy ? 14000 : MAX_IMAGE_HEIGHT,
+    maxImagePixels: accuracy ? 24_000_000 : MAX_IMAGE_PIXELS,
+  });
 
-  setStatus("긴 이미지를 OCR용으로 최적화 중", 8);
-  const canvas = drawNormalizedCanvas(bitmap, scale);
+  setStatus(accuracy ? "정확도 우선 전처리 중" : "긴 이미지를 OCR용으로 최적화 중", 8);
+  const canvas = drawNormalizedCanvas(bitmap, scale, {
+    targetMinWidth: accuracy ? ACCURACY_MIN_OCR_WIDTH : MIN_OCR_WIDTH,
+    thresholdHigh: accuracy ? 218 : 210,
+    thresholdLow: accuracy ? 132 : 145,
+    grayScaleFactor: accuracy ? 0.92 : 0.96,
+  });
   const context = getCanvasContext(canvas);
   const columnSplit = detectColumnSplit(context, canvas.width, canvas.height);
 
@@ -224,11 +252,14 @@ const normalizeImage = async (file) => {
 const sliceImage = async (file, width, height, columnSplit = null) => {
   const bitmap = await loadBitmap(file);
   const slices = [];
+  const accuracy = isAccuracyMode();
+  const sliceHeight = accuracy ? ACCURACY_SLICE_HEIGHT : OCR_SLICE_HEIGHT;
+  const sliceOverlap = accuracy ? ACCURACY_SLICE_OVERLAP : OCR_SLICE_OVERLAP;
   let offsetY = 0;
   let index = 0;
 
   while (offsetY < height) {
-    const currentHeight = Math.min(OCR_SLICE_HEIGHT, height - offsetY);
+    const currentHeight = Math.min(sliceHeight, height - offsetY);
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = currentHeight;
@@ -318,7 +349,7 @@ const sliceImage = async (file, width, height, columnSplit = null) => {
       break;
     }
 
-    offsetY += currentHeight - OCR_SLICE_OVERLAP;
+    offsetY += currentHeight - sliceOverlap;
     index += 1;
   }
 
@@ -351,6 +382,38 @@ const getWorker = async () => {
   return workerPromise;
 };
 
+const scoreText = (text) => {
+  if (!text) return 0;
+  const hangulMatches = text.match(/[가-힣]/g) || [];
+  const latinMatches = text.match(/[A-Za-z]/g) || [];
+  const digitMatches = text.match(/[0-9]/g) || [];
+  const weirdMatches = text.match(/[^\s가-힣A-Za-z0-9.,:;!?@%/()\-_'"]/g) || [];
+  return hangulMatches.length * 2 + latinMatches.length + digitMatches.length * 0.8 - weirdMatches.length * 1.4;
+};
+
+const chooseBestText = (candidates) =>
+  candidates
+    .filter(Boolean)
+    .sort((left, right) => scoreText(right) - scoreText(left))[0] || "";
+
+const recognizeSlice = async (worker, slice, index, total, options = {}) => {
+  const passLabel = options.passLabel ?? "";
+  const progressBase = options.progressBase ?? 15;
+  const progressSpan = options.progressSpan ?? 75;
+  const progress = progressBase + ((index + 1) / total) * progressSpan;
+  setStatus(`텍스트 추출 중 (${index + 1}/${total})${passLabel}`, progress);
+
+  if (options.parameters) {
+    await worker.setParameters(options.parameters);
+  }
+
+  const {
+    data: { text },
+  } = await worker.recognize(slice);
+
+  return text.trim();
+};
+
 const extractText = async (file) => {
   if (!window.Tesseract) {
     setStatus("OCR 라이브러리를 불러오지 못했습니다", 0);
@@ -363,6 +426,7 @@ const extractText = async (file) => {
   setStatus("이미지 분석 준비 중", 5);
 
   try {
+    const accuracy = isAccuracyMode();
     const normalized = await normalizeImage(file);
     const slices = await sliceImage(
       normalized.file,
@@ -373,19 +437,36 @@ const extractText = async (file) => {
     const worker = await getWorker();
     await worker.setParameters({
       preserve_interword_spaces: "1",
-      tessedit_pageseg_mode: "6",
+      tessedit_pageseg_mode: accuracy ? "4" : "6",
       user_defined_dpi: "300",
       textord_tabfind_find_tables: "0",
     });
     const results = [];
 
     for (let index = 0; index < slices.length; index += 1) {
-      const progressBase = 15 + (index / slices.length) * 75;
-      setStatus(`텍스트 추출 중 (${index + 1}/${slices.length})`, progressBase);
-      const {
-        data: { text },
-      } = await worker.recognize(slices[index]);
-      results.push(text.trim());
+      const baseText = await recognizeSlice(worker, slices[index], index, slices.length, {
+        progressBase: accuracy ? 12 : 15,
+        progressSpan: accuracy ? 48 : 75,
+      });
+
+      if (!accuracy) {
+        results.push(baseText);
+        continue;
+      }
+
+      const altText = await recognizeSlice(worker, slices[index], index, slices.length, {
+        passLabel: " · 정밀 분석",
+        progressBase: 60,
+        progressSpan: 34,
+        parameters: {
+          preserve_interword_spaces: "1",
+          tessedit_pageseg_mode: "11",
+          user_defined_dpi: "360",
+          textord_tabfind_find_tables: "0",
+        },
+      });
+
+      results.push(chooseBestText([baseText, altText]));
     }
 
     resultText.value = results.filter(Boolean).join("\n\n");
