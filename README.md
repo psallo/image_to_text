@@ -6,7 +6,8 @@
 
 - Frontend: HTML, CSS, JavaScript
 - Desktop shell: Tauri 2
-- OCR: Tesseract.js
+- OCR UI bridge: Tauri command
+- OCR engine: native local sidecar (`RapidOCR + ONNX Runtime`)
 
 ## Local setup
 
@@ -16,12 +17,14 @@ macOS:
 
 - Node.js 20+
 - Rust
+- Python 3.11+
 - Xcode Command Line Tools
 
 Windows:
 
 - Node.js 20+
 - Rust
+- Python 3.11+
 - Microsoft Visual Studio C++ Build Tools
 - WebView2
 
@@ -37,7 +40,21 @@ curl https://sh.rustup.rs -sSf | sh
 npm install
 ```
 
-### 3. Run the desktop app
+### 3. Install native OCR dependencies
+
+```bash
+python3 -m pip install -r native-ocr/requirements.txt
+```
+
+### 4. Build the native OCR sidecar
+
+```bash
+python3 native-ocr/build.py
+```
+
+이 명령은 현재 플랫폼용 OCR 실행 파일을 `src-tauri/binaries/`에 생성합니다.
+
+### 5. Run the desktop app
 
 ```bash
 npm run dev
@@ -45,7 +62,7 @@ npm run dev
 
 이 명령은 웹 파일을 `dist/`로 복사한 뒤 Tauri 앱을 실행합니다.
 
-### 4. Build bundles
+### 6. Build bundles
 
 ```bash
 npm run build
@@ -61,5 +78,6 @@ npm run build
 
 ## Notes
 
-- 현재 OCR 엔진은 CDN에서 로드되므로 첫 실행 시 인터넷 연결이 필요합니다.
-- 긴 스크린샷 이미지를 위해 전처리, 슬라이싱, 컬럼 분리 로직이 포함되어 있습니다.
+- 앱은 OCR 실행 시 인터넷 연결이 필요하지 않습니다.
+- 긴 스크린샷은 sidecar 내부에서 세로 슬라이싱 후 병합합니다.
+- GitHub Actions는 태그 빌드 시 Python sidecar를 먼저 만들고, 그다음 Tauri 번들을 생성합니다.

@@ -32,6 +32,11 @@ jobs:
           node-version: lts/*
           cache: npm
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -44,8 +49,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Install native OCR dependencies
+        run: python -m pip install -r native-ocr/requirements.txt
+
       - name: Prepare web assets
         run: npm run prepare:web
+
+      - name: Build native OCR sidecar
+        run: python native-ocr/build.py
 
       - name: Build Tauri bundles
         uses: tauri-apps/tauri-action@action-v0.6.1

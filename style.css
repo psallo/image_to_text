@@ -19,7 +19,13 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Noto Sans KR", sans-serif;
+  font-family:
+    "SF Pro Display",
+    "SF Pro Text",
+    "Apple SD Gothic Neo",
+    "Malgun Gothic",
+    "Segoe UI",
+    sans-serif;
   color: var(--text);
   background:
     radial-gradient(circle at top left, rgba(255, 215, 168, 0.85), transparent 28%),
@@ -45,7 +51,11 @@ textarea {
 
 .eyebrow,
 h1 {
-  font-family: "Space Grotesk", sans-serif;
+  font-family:
+    "SF Pro Display",
+    "Segoe UI",
+    "Helvetica Neue",
+    sans-serif;
 }
 
 .eyebrow {
@@ -159,21 +169,6 @@ h1 {
   margin-top: 14px;
 }
 
-.mode-select {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--muted);
-}
-
-.mode-select select {
-  border: 1px solid rgba(44, 28, 13, 0.12);
-  border-radius: 999px;
-  background: var(--panel-strong);
-  color: var(--text);
-  padding: 8px 14px;
-}
-
 .mode-toggle {
   display: inline-flex;
   align-items: center;
@@ -186,6 +181,12 @@ h1 {
   width: 18px;
   height: 18px;
   accent-color: var(--primary);
+}
+
+.mode-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.94rem;
 }
 
 .status-row,
@@ -332,7 +333,11 @@ h1 {
 .support-meta strong {
   display: block;
   margin-bottom: 8px;
-  font-family: "Space Grotesk", sans-serif;
+  font-family:
+    "SF Pro Display",
+    "Segoe UI",
+    "Helvetica Neue",
+    sans-serif;
   font-size: 1.1rem;
 }
 
