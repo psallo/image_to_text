@@ -11,12 +11,5 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.2.5"
-  },
-  "dependencies": {
-    "@gutenye/ocr-browser": "^1.4.8",
-    "@gutenye/ocr-common": "^1.4.8",
-    "@gutenye/ocr-models": "^1.4.2",
-    "esbuild": "^0.27.3",
-    "onnxruntime-web": "^1.24.3"
   }
 }
