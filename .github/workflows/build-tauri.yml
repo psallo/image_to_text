@@ -3,8 +3,11 @@ name: Build Tauri App
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -13,9 +16,9 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: ""
+            args: --bundles dmg
           - platform: windows-latest
-            args: ""
+            args: --bundles nsis
 
     runs-on: ${{ matrix.platform }}
 
@@ -47,4 +50,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: npm run tauri --
+          tagName: ${{ github.ref_name }}
+          releaseName: Simple OCR ${{ github.ref_name }}
+          releaseBody: |
+            Downloads
+            - macOS: `.dmg`
+            - Windows: `.exe` via NSIS
+          releaseDraft: false
+          prerelease: false
           args: ${{ matrix.args }}

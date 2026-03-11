@@ -23,7 +23,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["dmg", "nsis"],
     "createUpdaterArtifacts": false,
     "macOS": {
       "minimumSystemVersion": "11.0"
