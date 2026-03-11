@@ -7,6 +7,7 @@ const statusText = document.querySelector("#statusText");
 const progressBar = document.querySelector("#progressBar");
 const copyButton = document.querySelector("#copyButton");
 const accuracyMode = document.querySelector("#accuracyMode");
+const ocrMode = document.querySelector("#ocrMode");
 
 let activeObjectUrl = null;
 let workerPromise = null;
@@ -76,6 +77,7 @@ const loadBitmap = async (file) => {
 };
 
 const isAccuracyMode = () => Boolean(accuracyMode?.checked);
+const getOcrMode = () => ocrMode?.value || "screenshot";
 
 const computeScale = (sourceWidth, sourceHeight, options = {}) => {
   const maxImageWidth = options.maxImageWidth ?? MAX_IMAGE_WIDTH;
@@ -195,6 +197,106 @@ const drawNormalizedCanvas = (bitmap, scale, options = {}) => {
   return canvas;
 };
 
+const applyThresholdVariant = (sourceCanvas, options = {}) => {
+  const thresholdHigh = options.thresholdHigh ?? 215;
+  const thresholdLow = options.thresholdLow ?? 140;
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceCanvas.width;
+  canvas.height = sourceCanvas.height;
+  const context = getCanvasContext(canvas);
+  context.drawImage(sourceCanvas, 0, 0);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = imageData;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const gray = data[index];
+    const value = gray > thresholdHigh ? 255 : gray < thresholdLow ? 0 : gray;
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return canvas;
+};
+
+const applySharpenVariant = (sourceCanvas) => {
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceCanvas.width;
+  canvas.height = sourceCanvas.height;
+  const context = getCanvasContext(canvas);
+  context.drawImage(sourceCanvas, 0, 0);
+  const source = context.getImageData(0, 0, canvas.width, canvas.height);
+  const target = context.createImageData(canvas.width, canvas.height);
+  const { width, height, data } = source;
+  const targetData = target.data;
+  const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+
+  for (let y = 1; y < height - 1; y += 1) {
+    for (let x = 1; x < width - 1; x += 1) {
+      let value = 0;
+      let kernelIndex = 0;
+
+      for (let ky = -1; ky <= 1; ky += 1) {
+        for (let kx = -1; kx <= 1; kx += 1) {
+          const index = ((y + ky) * width + (x + kx)) * 4;
+          value += data[index] * kernel[kernelIndex];
+          kernelIndex += 1;
+        }
+      }
+
+      const clamped = Math.max(0, Math.min(255, value));
+      const pixelIndex = (y * width + x) * 4;
+      targetData[pixelIndex] = clamped;
+      targetData[pixelIndex + 1] = clamped;
+      targetData[pixelIndex + 2] = clamped;
+      targetData[pixelIndex + 3] = 255;
+    }
+  }
+
+  context.putImageData(target, 0, 0);
+  return canvas;
+};
+
+const trimEmptyEdges = (sourceCanvas) => {
+  const context = getCanvasContext(sourceCanvas);
+  const imageData = context.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
+  const { data, width, height } = imageData;
+  let top = 0;
+  let bottom = height - 1;
+
+  const rowInk = (y) => {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      if (data[index] < 240) return true;
+    }
+    return false;
+  };
+
+  while (top < bottom && !rowInk(top)) top += 1;
+  while (bottom > top && !rowInk(bottom)) bottom -= 1;
+
+  if (top === 0 && bottom === height - 1) {
+    return sourceCanvas;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = bottom - top + 1;
+  getCanvasContext(canvas).drawImage(
+    sourceCanvas,
+    0,
+    top,
+    width,
+    canvas.height,
+    0,
+    0,
+    width,
+    canvas.height,
+  );
+  return canvas;
+};
+
 const canvasToFile = async (canvas, name) => {
   const blob = await new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -253,6 +355,7 @@ const sliceImage = async (file, width, height, columnSplit = null) => {
   const bitmap = await loadBitmap(file);
   const slices = [];
   const accuracy = isAccuracyMode();
+  const mode = getOcrMode();
   const sliceHeight = accuracy ? ACCURACY_SLICE_HEIGHT : OCR_SLICE_HEIGHT;
   const sliceOverlap = accuracy ? ACCURACY_SLICE_OVERLAP : OCR_SLICE_OVERLAP;
   let offsetY = 0;
@@ -278,49 +381,51 @@ const sliceImage = async (file, width, height, columnSplit = null) => {
       width,
       currentHeight,
     );
+    const preparedCanvas = mode === "document" ? trimEmptyEdges(canvas) : canvas;
 
     if (columnSplit) {
-      const rightWidth = width - columnSplit.rightX;
+      const workingCanvas = preparedCanvas;
+      const rightWidth = workingCanvas.width - columnSplit.rightX;
       if (columnSplit.leftWidth < 80 || rightWidth < 80) {
         slices.push(
           await canvasToFile(
-            canvas,
+            workingCanvas,
             file.name.replace(/\.\w+$/, "") + `-slice-${String(index).padStart(2, "0")}.png`,
           ),
         );
       } else {
         const leftCanvas = document.createElement("canvas");
         leftCanvas.width = columnSplit.leftWidth;
-        leftCanvas.height = currentHeight;
+        leftCanvas.height = workingCanvas.height;
         leftCanvas
           .getContext("2d", { alpha: false, willReadFrequently: true })
           .drawImage(
-            canvas,
+            workingCanvas,
             0,
             0,
             columnSplit.leftWidth,
-            currentHeight,
+            workingCanvas.height,
             0,
             0,
             columnSplit.leftWidth,
-            currentHeight,
+            workingCanvas.height,
           );
 
         const rightCanvas = document.createElement("canvas");
         rightCanvas.width = rightWidth;
-        rightCanvas.height = currentHeight;
+        rightCanvas.height = workingCanvas.height;
         rightCanvas
           .getContext("2d", { alpha: false, willReadFrequently: true })
           .drawImage(
-            canvas,
+            workingCanvas,
             columnSplit.rightX,
             0,
             rightWidth,
-            currentHeight,
+            workingCanvas.height,
             0,
             0,
             rightWidth,
-            currentHeight,
+            workingCanvas.height,
           );
 
         slices.push(
@@ -339,7 +444,7 @@ const sliceImage = async (file, width, height, columnSplit = null) => {
     } else {
       slices.push(
         await canvasToFile(
-          canvas,
+          preparedCanvas,
           file.name.replace(/\.\w+$/, "") + `-slice-${String(index).padStart(2, "0")}.png`,
         ),
       );
@@ -396,6 +501,121 @@ const chooseBestText = (candidates) =>
     .filter(Boolean)
     .sort((left, right) => scoreText(right) - scoreText(left))[0] || "";
 
+const normalizeLine = (line) =>
+  line
+    .replace(/\s+/g, " ")
+    .replace(/\s+([.,:;!?%])/g, "$1")
+    .replace(/([(])\s+/g, "$1")
+    .replace(/\s+([)\]])/g, "$1")
+    .trim();
+
+const shouldMergeLine = (currentLine, nextLine) => {
+  if (!currentLine || !nextLine) return false;
+  if (/[.!?:)]$/.test(currentLine)) return false;
+  if (/^[0-9]+[.)-]/.test(nextLine)) return false;
+  if (/^[A-Z0-9][A-Za-z0-9\s]{0,6}$/.test(currentLine)) return false;
+  return /[가-힣A-Za-z0-9]$/.test(currentLine) && /^[가-힣a-z0-9("']/.test(nextLine);
+};
+
+const dedupeAdjacentLines = (lines) => {
+  const deduped = [];
+  for (const line of lines) {
+    if (!line) continue;
+    const previous = deduped[deduped.length - 1];
+    if (!previous) {
+      deduped.push(line);
+      continue;
+    }
+    if (line === previous) continue;
+    if (previous.includes(line) || line.includes(previous)) {
+      deduped[deduped.length - 1] = previous.length >= line.length ? previous : line;
+      continue;
+    }
+    deduped.push(line);
+  }
+  return deduped;
+};
+
+const postProcessText = (text, mode) => {
+  const rawLines = text
+    .split("\n")
+    .map((line) => normalizeLine(line))
+    .filter(Boolean);
+
+  const mergedLines = [];
+  for (const line of rawLines) {
+    const previous = mergedLines[mergedLines.length - 1];
+    if (shouldMergeLine(previous, line)) {
+      mergedLines[mergedLines.length - 1] = `${previous} ${line}`.replace(/\s+/g, " ");
+      continue;
+    }
+    mergedLines.push(line);
+  }
+
+  const deduped = dedupeAdjacentLines(mergedLines);
+  if (mode === "document") {
+    return deduped.join("\n");
+  }
+
+  const grouped = [];
+  for (const line of deduped) {
+    if (/^[0-9]+[.)-]/.test(line) || /^[A-Z][A-Za-z\s]{2,}$/.test(line)) {
+      grouped.push(`\n${line}`);
+      continue;
+    }
+    grouped.push(line);
+  }
+  return grouped.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+};
+
+const createSliceVariants = async (sliceFile, mode, accuracy) => {
+  const bitmap = await loadBitmap(sliceFile);
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.width = bitmap.width;
+  baseCanvas.height = bitmap.height;
+  getCanvasContext(baseCanvas).drawImage(bitmap, 0, 0);
+
+  if ("close" in bitmap && typeof bitmap.close === "function") {
+    bitmap.close();
+  }
+
+  const variants = [
+    {
+      label: "",
+      file: await canvasToFile(baseCanvas, sliceFile.name.replace(".png", "-base.png")),
+      parameters: {
+        tessedit_pageseg_mode: mode === "document" ? "6" : accuracy ? "4" : "11",
+        user_defined_dpi: accuracy ? "360" : "300",
+      },
+    },
+  ];
+
+  const thresholdCanvas = applyThresholdVariant(baseCanvas, {
+    thresholdHigh: mode === "document" ? 224 : 216,
+    thresholdLow: mode === "document" ? 150 : 132,
+  });
+  variants.push({
+    label: " · threshold",
+    file: await canvasToFile(thresholdCanvas, sliceFile.name.replace(".png", "-threshold.png")),
+    parameters: {
+      tessedit_pageseg_mode: mode === "document" ? "6" : "11",
+      user_defined_dpi: accuracy ? "380" : "320",
+    },
+  });
+
+  const sharpenCanvas = applySharpenVariant(baseCanvas);
+  variants.push({
+    label: " · sharpen",
+    file: await canvasToFile(sharpenCanvas, sliceFile.name.replace(".png", "-sharpen.png")),
+    parameters: {
+      tessedit_pageseg_mode: mode === "document" ? "4" : "11",
+      user_defined_dpi: accuracy ? "400" : "320",
+    },
+  });
+
+  return variants;
+};
+
 const recognizeSlice = async (worker, slice, index, total, options = {}) => {
   const passLabel = options.passLabel ?? "";
   const progressBase = options.progressBase ?? 15;
@@ -427,6 +647,7 @@ const extractText = async (file) => {
 
   try {
     const accuracy = isAccuracyMode();
+    const mode = getOcrMode();
     const normalized = await normalizeImage(file);
     const slices = await sliceImage(
       normalized.file,
@@ -437,39 +658,36 @@ const extractText = async (file) => {
     const worker = await getWorker();
     await worker.setParameters({
       preserve_interword_spaces: "1",
-      tessedit_pageseg_mode: accuracy ? "4" : "6",
-      user_defined_dpi: "300",
+      tessedit_pageseg_mode: mode === "document" ? "6" : accuracy ? "4" : "11",
+      user_defined_dpi: mode === "document" ? "360" : "300",
       textord_tabfind_find_tables: "0",
     });
     const results = [];
 
     for (let index = 0; index < slices.length; index += 1) {
-      const baseText = await recognizeSlice(worker, slices[index], index, slices.length, {
-        progressBase: accuracy ? 12 : 15,
-        progressSpan: accuracy ? 48 : 75,
-      });
+      const variants = await createSliceVariants(slices[index], mode, accuracy);
+      const candidates = [];
 
-      if (!accuracy) {
-        results.push(baseText);
-        continue;
+      for (let variantIndex = 0; variantIndex < variants.length; variantIndex += 1) {
+        const variant = variants[variantIndex];
+        const candidate = await recognizeSlice(worker, variant.file, index, slices.length, {
+          passLabel: variant.label,
+          progressBase: 12 + (variantIndex / variants.length) * 48,
+          progressSpan: accuracy ? 18 : 22,
+          parameters: {
+            preserve_interword_spaces: "1",
+            textord_tabfind_find_tables: "0",
+            ...variant.parameters,
+          },
+        });
+        candidates.push(candidate);
+        if (!accuracy && variantIndex === 1) break;
       }
 
-      const altText = await recognizeSlice(worker, slices[index], index, slices.length, {
-        passLabel: " · 정밀 분석",
-        progressBase: 60,
-        progressSpan: 34,
-        parameters: {
-          preserve_interword_spaces: "1",
-          tessedit_pageseg_mode: "11",
-          user_defined_dpi: "360",
-          textord_tabfind_find_tables: "0",
-        },
-      });
-
-      results.push(chooseBestText([baseText, altText]));
+      results.push(chooseBestText(candidates));
     }
 
-    resultText.value = results.filter(Boolean).join("\n\n");
+    resultText.value = postProcessText(results.filter(Boolean).join("\n\n"), mode);
     copyButton.disabled = !resultText.value;
     setStatus("추출 완료", 100);
   } catch (error) {

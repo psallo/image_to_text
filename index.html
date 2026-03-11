@@ -41,10 +41,19 @@
             <span>상태</span>
             <strong id="statusText">대기 중</strong>
           </div>
-          <label class="mode-toggle" for="accuracyMode">
-            <input id="accuracyMode" type="checkbox" />
-            <span>정확도 우선 모드</span>
-          </label>
+          <div class="ocr-controls" aria-label="OCR 설정">
+            <label class="mode-select">
+              <span>인식 모드</span>
+              <select id="ocrMode">
+                <option value="screenshot">스크린샷 모드</option>
+                <option value="document">문서 모드</option>
+              </select>
+            </label>
+            <label class="mode-toggle" for="accuracyMode">
+              <input id="accuracyMode" type="checkbox" />
+              <span>정확도 우선 모드</span>
+            </label>
+          </div>
           <div class="progress-track" aria-hidden="true">
             <div class="progress-bar" id="progressBar"></div>
           </div>
