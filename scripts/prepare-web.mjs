@@ -7,6 +7,6 @@ const distDir = resolve(rootDir, "dist");
 
 await mkdir(distDir, { recursive: true });
 
-for (const file of ["index.html", "style.css", "script.js"]) {
+for (const file of ["index.html", "style.css", "script.js", "paypal.jpg"]) {
   await copyFile(resolve(rootDir, file), resolve(distDir, file));
 }
