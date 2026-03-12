@@ -28,7 +28,8 @@ pub async fn run_native_ocr(
 fn run_native_ocr_sync(app: AppHandle, payload: NativeOcrRequest) -> Result<String, String> {
     let sidecar_path = resolve_sidecar_path(&app)?;
     let temp_path = write_temp_image(&payload.image_bytes, payload.filename.as_deref())?;
-    let output = Command::new(&sidecar_path)
+    let mut command = Command::new(&sidecar_path);
+    command
         .arg("--image-path")
         .arg(&temp_path)
         .arg("--profile")
@@ -37,7 +38,10 @@ fn run_native_ocr_sync(app: AppHandle, payload: NativeOcrRequest) -> Result<Stri
             vec!["--accuracy"]
         } else {
             Vec::new()
-        })
+        });
+    configure_command(&mut command);
+
+    let output = command
         .output()
         .map_err(|error| format!("Failed to launch native OCR sidecar: {error}"))?;
 
@@ -52,8 +56,7 @@ fn run_native_ocr_sync(app: AppHandle, payload: NativeOcrRequest) -> Result<Stri
         });
     }
 
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|error| format!("Failed to decode OCR output: {error}"))?;
+    let stdout = decode_output(&output.stdout)?;
     Ok(stdout)
 }
 
@@ -133,6 +136,31 @@ fn sidecar_filename() -> String {
     }
     name
 }
+
+fn decode_output(bytes: &[u8]) -> Result<String, String> {
+    match String::from_utf8(bytes.to_vec()) {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            let recovered = String::from_utf8_lossy(bytes).to_string();
+            if recovered.trim_start().starts_with('{') {
+                Ok(recovered)
+            } else {
+                Err(format!("Failed to decode OCR output: {error}"))
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn configure_command(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_command(_command: &mut Command) {}
 
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 fn current_target_triple() -> &'static str {

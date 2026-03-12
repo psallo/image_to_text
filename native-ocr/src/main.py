@@ -10,6 +10,13 @@ import numpy as np
 from rapidocr_onnxruntime import RapidOCR
 
 
+def configure_stdio() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--image-path", required=True)
@@ -238,6 +245,7 @@ def run_ocr(ocr: RapidOCR, image: np.ndarray, profile: str, accuracy: bool) -> l
 
 
 def main() -> int:
+    configure_stdio()
     args = parse_args()
     image_path = Path(args.image_path)
     image = cv2.imread(str(image_path))
@@ -261,7 +269,8 @@ def main() -> int:
             "language_hint": args.language_hint,
         },
     }
-    print(json.dumps(payload, ensure_ascii=False))
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False))
+    sys.stdout.flush()
     return 0
 
 
