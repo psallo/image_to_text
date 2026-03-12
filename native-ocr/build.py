@@ -14,6 +14,7 @@ DIST_DIR = SIDECAR_DIR / "dist"
 BUILD_DIR = SIDECAR_DIR / "build"
 BINARIES_DIR = ROOT / "src-tauri" / "binaries"
 SWIFT_PACKAGE_DIR = SIDECAR_DIR
+WINDOWS_PROJECT_DIR = SIDECAR_DIR / "windows"
 
 
 def detect_target() -> str:
@@ -68,12 +69,34 @@ def build_macos_sidecar() -> Path:
     return SWIFT_PACKAGE_DIR / ".build" / "release" / "native-ocr"
 
 
+def build_windows_sidecar(target: str) -> Path:
+    runtime = "win-arm64" if target.startswith("aarch64-") else "win-x64"
+    output_dir = DIST_DIR / runtime
+    subprocess.check_call(
+        [
+            "dotnet",
+            "publish",
+            str(WINDOWS_PROJECT_DIR / "NativeOCRWindows.csproj"),
+            "-c",
+            "Release",
+            "-r",
+            runtime,
+            "-o",
+            str(output_dir),
+        ],
+        cwd=ROOT,
+    )
+    return output_dir / "NativeOCRWindows.exe"
+
+
 def main() -> int:
     args = parse_args()
     target = args.target
 
     if target.endswith("apple-darwin"):
         built_path = build_macos_sidecar()
+    elif target.endswith("windows-msvc"):
+        built_path = build_windows_sidecar(target)
     else:
         built_path = build_python_sidecar(target)
 

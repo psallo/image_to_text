@@ -4,3 +4,5 @@ dist
 __pycache__/
 *.pyc
 native-ocr/.build/
+native-ocr/windows/bin/
+native-ocr/windows/obj/
