@@ -7,7 +7,9 @@
 - Frontend: HTML, CSS, JavaScript
 - Desktop shell: Tauri 2
 - OCR UI bridge: Tauri command
-- OCR engine: native local sidecar (`RapidOCR + ONNX Runtime`)
+- OCR engine
+  - macOS: Apple Vision
+  - Windows: RapidOCR + ONNX Runtime
 
 ## Local setup
 
@@ -17,7 +19,6 @@ macOS:
 
 - Node.js 20+
 - Rust
-- Python 3.11+
 - Xcode Command Line Tools
 
 Windows:
@@ -46,6 +47,8 @@ npm install
 python3 -m pip install -r native-ocr/requirements.txt
 ```
 
+macOS는 sidecar 빌드에 Python 패키지가 필수는 아니고, Windows용 RapidOCR 빌드에 필요합니다.
+
 ### 4. Build the native OCR sidecar
 
 ```bash
@@ -53,6 +56,8 @@ python3 native-ocr/build.py
 ```
 
 이 명령은 현재 플랫폼용 OCR 실행 파일을 `src-tauri/binaries/`에 생성합니다.
+- macOS: Swift + Apple Vision sidecar
+- Windows: Python + RapidOCR sidecar
 
 ### 5. Run the desktop app
 
@@ -80,4 +85,4 @@ npm run build
 
 - 앱은 OCR 실행 시 인터넷 연결이 필요하지 않습니다.
 - 긴 스크린샷은 sidecar 내부에서 세로 슬라이싱 후 병합합니다.
-- GitHub Actions는 태그 빌드 시 Python sidecar를 먼저 만들고, 그다음 Tauri 번들을 생성합니다.
+- GitHub Actions는 플랫폼에 따라 해당 sidecar를 빌드한 뒤 Tauri 번들을 생성합니다.

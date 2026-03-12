@@ -3,3 +3,4 @@ src-tauri/target
 dist
 __pycache__/
 *.pyc
+native-ocr/.build/
