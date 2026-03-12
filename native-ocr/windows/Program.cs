@@ -129,7 +129,7 @@ static class Program
 
     private static async Task<SoftwareBitmap> LoadBitmapAsync(string imagePath)
     {
-        await using var stream = new InMemoryRandomAccessStream();
+        using var stream = new InMemoryRandomAccessStream();
         var bytes = await File.ReadAllBytesAsync(imagePath);
         await stream.WriteAsync(bytes.AsBuffer());
         stream.Seek(0);
